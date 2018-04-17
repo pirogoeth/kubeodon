@@ -1,0 +1,231 @@
+---
+
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: mastodon-web
+  labels:
+    app: mastodon
+    role: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mastodon
+      role: web
+  template:
+    metadata:
+      labels:
+        app: mastodon
+        role: web
+    spec:
+      volumes:
+        - name: mastodon-data
+          flexVolume:
+            driver: rook.io/rook
+            fsType: ceph
+            options:
+              fsName: mastodon-prod-fs
+              clusterName: rook
+      containers:
+        - name: web
+          image: containers.dev.maio.me/sjohnson/containers/mastodon:v2.3.3
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: mastodon-config
+            - secretRef:
+                name: mastodon-secrets
+          command:
+            - bundle
+            - exec
+            - rails
+            - s
+            - -p
+            - "3000"
+            - -b
+            - "0.0.0.0"
+          ports:
+            - name: web
+              containerPort: 3000
+          volumeMounts:
+            - name: mastodon-data
+              mountPath: /mastodon/public/assets
+              subPath: app/public/assets
+            - name: mastodon-data
+              mountPath: /mastodon/public/packs
+              subPath: app/public/packs
+            - name: mastodon-data
+              mountPath: /mastodon/public/system
+              subPath: app/public/system
+          resources:
+            requests:
+              memory: 400Mi
+              cpu: 200m
+
+---
+
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: mastodon-streaming
+  labels:
+    app: mastodon
+    role: streaming
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mastodon
+      role: streaming
+  template:
+    metadata:
+      labels:
+        app: mastodon
+        role: streaming
+    spec:
+      volumes:
+        - name: mastodon-data
+          flexVolume:
+            driver: rook.io/rook
+            fsType: ceph
+            options:
+              fsName: mastodon-prod-fs
+              clusterName: rook
+      containers:
+        - name: streaming
+          image: containers.dev.maio.me/sjohnson/containers/mastodon:v2.3.3
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: mastodon-config
+            - secretRef:
+                name: mastodon-secrets
+          command:
+            - yarn
+            - start
+          ports:
+            - name: streaming
+              containerPort: 4000
+          volumeMounts:
+            - name: mastodon-data
+              mountPath: /mastodon/public/assets
+              subPath: app/public/assets
+            - name: mastodon-data
+              mountPath: /mastodon/public/packs
+              subPath: app/public/packs
+            - name: mastodon-data
+              mountPath: /mastodon/public/system
+              subPath: app/public/system
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+
+---
+
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: mastodon-cache
+  labels:
+    app: mastodon
+    role: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mastodon
+      role: cache
+  template:
+    metadata:
+      labels:
+        app: mastodon
+        role: cache
+    spec:
+      volumes:
+        - name: mastodon-data
+          flexVolume:
+            driver: rook.io/rook
+            fsType: ceph
+            options:
+              fsName: mastodon-prod-fs
+              clusterName: rook
+      containers:
+        - name: cache
+          image: redis:4.0-alpine
+          imagePullPolicy: Always
+          ports:
+            - name: redis
+              containerPort: 6379
+          volumeMounts:
+            - name: mastodon-data
+              mountPath: /data
+              subPath: redis
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 100m
+
+---
+
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: mastodon-worker
+  labels:
+    app: mastodon
+    role: workers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mastodon
+      role: workers
+  template:
+    metadata:
+      labels:
+        app: mastodon
+        role: workers
+    spec:
+      volumes:
+        - name: mastodon-data
+          flexVolume:
+            driver: rook.io/rook
+            fsType: ceph
+            options:
+              fsName: mastodon-prod-fs
+              clusterName: rook
+      containers:
+        - name: queue
+          image: containers.dev.maio.me/sjohnson/containers/mastodon:v2.3.3
+          imagePullPolicy: Always
+          env:
+            - name: CAFILE_RB
+              value: |
+                Rails.application.configure do
+                  config.action_mailer.smtp_settings[:ca_file] = "/etc/ssl/certs/ca-certificates.crt"
+                end
+          envFrom:
+            - configMapRef:
+                name: mastodon-config
+            - secretRef:
+                name: mastodon-secrets
+          command:
+            - /bin/sh
+            - -c
+            - "echo \"${CAFILE_RB}\" > /mastodon/config/initializers/cafile.rb && bundle exec sidekiq -q default -q mailers -q pull -q push"
+          volumeMounts:
+            - name: mastodon-data
+              mountPath: /mastodon/public/assets
+              subPath: app/public/assets
+            - name: mastodon-data
+              mountPath: /mastodon/public/packs
+              subPath: app/public/packs
+            - name: mastodon-data
+              mountPath: /mastodon/public/system
+              subPath: app/public/system
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m

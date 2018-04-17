@@ -1,0 +1,25 @@
+---
+
+# Only apply this configuration if you're using Rook.
+# Otherwise, create a PVC and change the volume stanzas inside
+# `deployment.yaml` to use the new PVC.
+#
+# Also make sure to change the deployment stanza inside of `job.yaml`
+# if you do change to a PVC.
+
+apiVersion: rook.io/v1alpha1
+kind: Filesystem
+metadata:
+  name: mastodon-prod-fs
+  namespace: rook
+spec:
+  metadataPool:
+    replicated:
+      size: 3
+  dataPools:
+    - erasureCoded:
+        dataChunks: 2
+        codingChunks: 1
+  metadataServer:
+    activeCount: 1
+    activeStandby: true

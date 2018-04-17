@@ -1,0 +1,50 @@
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mastodon-asset-compilation
+  labels:
+    app: mastodon
+spec:
+  template:
+    metadata:
+      name: mastodon-asset-compilation
+      labels:
+        app: mastodon
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: mastodon-data
+          flexVolume:
+            driver: rook.io/rook
+            fsType: ceph
+            options:
+              fsName: mastodon-prod-fs
+              clusterName: rook
+      containers:
+        - name: asset-compilation
+          image: containers.dev.maio.me/sjohnson/containers/mastodon:v2.3.3
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: mastodon-config
+            - secretRef:
+                name: mastodon-secrets
+          command:
+            - rails
+            - assets:precompile
+          volumeMounts:
+            - name: mastodon-data
+              mountPath: /mastodon/public/assets
+              subPath: app/public/assets
+            - name: mastodon-data
+              mountPath: /mastodon/public/packs
+              subPath: app/public/packs
+            - name: mastodon-data
+              mountPath: /mastodon/public/system
+              subPath: app/public/system
+          resources:
+            requests:
+              memory: 350Mi
+              cpu: 200m
